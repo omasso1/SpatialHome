@@ -89,6 +89,8 @@ class LandMarkRecognizer():
                 result_callback=live_call_back)
 
         self._detector:HolisticLandmarker = mp.tasks.vision.HolisticLandmarker.create_from_options(options)
+        self._pose_connections:list[tuple] = []
+        self.transform_connections()
 
     def print_result(self,
                      result: HolisticLandmarkerResult,
@@ -96,6 +98,13 @@ class LandMarkRecognizer():
                      timestamp_ms: int):
         print('holistic landmarker result: {}'.format(result))
 
+    def transform_connections(self):
+        for connection in mp.tasks.vision.PoseLandmarksConnections.POSE_LANDMARKS:
+            self._pose_connections.append((connection.start, connection.end))
+
+    def get_pose_connections(self) -> list[tuple]:
+        return self._pose_connections
+    
     def detect_async(self, image: mp.Image, timestamp: int):
         self._detector.detect_async(image, timestamp)
 

@@ -1,4 +1,4 @@
-from ursina import Ursina, load_blender_scene, EditorCamera
+from ursina import Ursina, load_blender_scene, EditorCamera, Mesh, Entity, Vec3, color
 from ursina.shaders import lit_with_shadows_shader
 from pathlib import Path
 from typing import cast
@@ -28,8 +28,40 @@ class MainApp():
     def _init_ursina(self) -> Ursina:
         ursina_app =  Ursina()
         self._room = load_blender_scene("room", fileDir / "roomModel", reload=True, vertex_colors=True)
+        self._human_model = Entity(
+            model=Mesh(
+                vertices=[],
+                mode='line',
+                thickness=3
+            ),
+            color=color.white
+        )
         EditorCamera()
         return ursina_app
+
+    def _recalculate_human_model(self, mp_landmarks: HolisticLandmarkerResult) -> None:
+        assert(type(self._human_model.model) is Mesh)
+
+        temp = mp_landmarks.pose_landmarks
+        world_landmarks = mp_landmarks.pose_world_landmarks
+        normal_landmarks = mp_landmarks.pose_landmarks
+
+        self._human_model.model.vertices = []
+        self._human_model.model.colors = []
+        i = 0
+        for landmark in world_landmarks:
+            self._human_model.model.vertices.append(
+                Vec3(
+                    landmark.x,
+                    landmark.y,
+                    landmark.z
+                ))
+            new_color = color.blue if normal_landmarks[i].z > 0 else color.red
+            self._human_model.model.colors.append(new_color)
+            i += 1
+        self._human_model.model.triangles = self._land_mark_recognizer.get_pose_connections()
+        self._human_model.model.generate()
+
 
 
     def _init_camera(self) -> cv2.VideoCapture:
@@ -81,6 +113,7 @@ class MainApp():
         image = self._land_mark_recognizer.add_landmarks_to_image(output_image, result)
         self._result_image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
         self._result_processed = True
+        self._recalculate_human_model(result)
         pass
 
     def run(self):
@@ -95,5 +128,5 @@ class MainApp():
             delta_time = (end_time - start_time)
             sleep_time = self.frame_time - delta_time if self.frame_time - delta_time > 0 else 0
             time.sleep(sleep_time)
-            print(f"Frame {i}")
+            # print(f"Frame {i}")
             # print(f"Current max frame rate {1 / delta_time}")
