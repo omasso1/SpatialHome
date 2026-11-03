@@ -125,6 +125,7 @@ class LandMarkRecognizer():
             })
             mp_hands = mp.tasks.vision.HandLandmarksConnections
             mp_pose = mp.tasks.vision.PoseLandmarksConnections
+            mp_face = mp.tasks.vision.FaceLandmarksConnections
             mp_drawing = mp.tasks.vision.drawing_utils
             mp_drawing_styles = mp.tasks.vision.drawing_styles
             image_copy = image.numpy_view().copy()
@@ -147,5 +148,34 @@ class LandMarkRecognizer():
                 mp_pose.POSE_LANDMARKS,
                 mp_drawing_styles.get_default_pose_landmarks_style(),
                 mp_drawing.DrawingSpec(color=(0, 255, 0), thickness=2))
+
+            mp_drawing.draw_landmarks(
+                landmark_list=landmarks.face_landmarks,
+                image=image_copy,
+                connections=mp_face.FACE_LANDMARKS_TESSELATION,
+                landmark_drawing_spec=None,
+                connection_drawing_spec=mp_drawing_styles.get_default_face_mesh_tesselation_style())
+
+            mp_drawing.draw_landmarks(
+                image=image_copy,
+                landmark_list=landmarks.face_landmarks,
+                connections=mp_face.FACE_LANDMARKS_CONTOURS,
+                landmark_drawing_spec=None,
+                connection_drawing_spec=mp_drawing_styles.get_default_face_mesh_contours_style())
+
+            mp_drawing.draw_landmarks(
+                image=image_copy,
+                landmark_list=landmarks.face_landmarks,
+                connections=mp_face.FACE_LANDMARKS_LEFT_IRIS,
+                landmark_drawing_spec=None,
+                connection_drawing_spec=mp_drawing_styles.get_default_face_mesh_iris_connections_style())
+
+            mp_drawing.draw_landmarks(
+                image=image_copy,
+                landmark_list=landmarks.face_landmarks,
+                connections=mp_face.FACE_LANDMARKS_RIGHT_IRIS,
+                landmark_drawing_spec=None,
+                connection_drawing_spec=mp_drawing_styles.get_default_face_mesh_iris_connections_style())
+
             return image_copy
 

@@ -61,7 +61,20 @@ class MainApp():
                             self._room.phone_camera, 'rotation_z', self._Gui.sliders["rotation_z"].value
                           ))
         Gui.add_slider("rotation_z", config)
-        Gui.add_button("new_button")
+
+        config = Gui.Button_config(
+            "Take  calibration picutres",
+            Vec2(0.15, -0.2),
+            self._video_cap.take_calib_picture
+        )
+        Gui.add_button("Take calibration picutre", config)
+
+        config = Gui.Button_config(
+            "Calibrate camera",
+            Vec2(0.15, -0.3),
+            self._video_cap.process_calib_pictures
+        )
+        Gui.add_button("Take calibration picutre", config)
         return Gui
 
     def _init_ursina(self) -> Ursina:
