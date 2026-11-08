@@ -1,11 +1,12 @@
 import cv2
-from cv2.typing import MatLike
+from cv2.typing import MatLike, Size
 import numpy as np
 from pathlib import Path
 import time
-from ursina import Audio
+from ursina import Audio, Vec2, Vec3
 import pickle
 import os
+
 
 fileDir = Path(__file__).resolve().parent
 
@@ -21,8 +22,15 @@ class Camera:
             self.rvecs = rvecs
             self.tvecx = tvecs
 
-    def __init__(self, address: str):
+    def __init__(self, address: str,
+                 record_video: bool = False,
+                 read_video: bool = False,
+                 record_read_path: Path = fileDir / Path("video/vid01.mp4")):
+
         self.camera_address = address;
+        if read_video:
+            self.camera_address = record_read_path
+
         self.video_capture = cv2.VideoCapture(
             self.camera_address,
             cv2.CAP_FFMPEG,
@@ -31,13 +39,23 @@ class Camera:
                 cv2.CAP_PROP_READ_TIMEOUT_MSEC, 1000
             ]
         )
+
+        self.video_writer = None
+
         if self.video_capture.isOpened():
             print("Video capture connection is working")
         else:
             print("Video capture connection failed")
             raise RuntimeError("Video capture connection failed")
+
         self._calib_pictures: list[MatLike] = []
         self._calib_data = self.Calibration_data()
+        self._record_video: bool = record_video
+        self._read_video: bool = read_video
+        self._recorded_video: list[MatLike] = []
+        self._record_read_path:Path = record_read_path
+        self._video_width:int = 0
+        self._video_height:int = 0
         self.load_calib_pictures()
         self.load_calib_data()
 
@@ -54,7 +72,7 @@ class Camera:
         calib_path = fileDir / 'calibData' / 'calib.obj'
         if not os.path.exists(calib_path):
             return
-        
+
         with open(calib_path, 'br') as file:
             self._calib_data = pickle.load(file)
 
@@ -66,7 +84,27 @@ class Camera:
         self.video_capture.release()
 
     def read(self) -> tuple[bool, MatLike]:
-        return self.video_capture.read()
+        ret, frame = self.video_capture.read()
+
+        if(ret and self._record_video):
+            self._recorded_video.append(frame)
+
+            if self.video_writer is None:
+                self._video_width = int(self.video_capture.get(cv2.CAP_PROP_FRAME_WIDTH))
+                self._video_height = int(self.video_capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                self.video_writer = cv2.VideoWriter(self._record_read_path,
+                            cv2.VideoWriter.fourcc('M', 'P', '4', 'V'),
+                            10.0,
+                            (self._video_width, self._video_height),
+                            True)
+
+            self.video_writer.write(frame)
+        if self._read_video:
+            if not ret:
+                self.video_capture.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                ret, frame = self.video_capture.read()
+                
+        return (ret, frame)
 
     def take_calib_picture(self):
         for i in range(10):
@@ -132,3 +170,48 @@ class Camera:
 
 
         self._calib_pictures = correct_picutres
+
+    def save_video(self) -> None:
+        if self.video_writer is not None:
+            self.video_writer.release()
+
+    def pixel_to_vector(self, pixel_coord: Vec2) -> Vec3:
+        point = np.array([[[pixel_coord.x, pixel_coord.y]]], dtype=np.float64)
+
+        undistortedPoint = cv2.undistortPoints(point, self._calib_data.mtx, self._calib_data.dist)
+        x, y = undistortedPoint[0, 0]
+        direction = np.array([x, y, 1.0])
+        direction /= np.linalg.norm(direction)
+        return Vec3(direction[0], direction[1], direction[2])
+
+    def position_3d_to_pixel(self, position: Vec3) -> Vec2:
+        pixel = np.array([[position.x, position.y, position.z]], dtype=np.float64)
+        image_points, _ = cv2.projectPoints(
+            pixel,
+            np.zeros(3),  # brak dodatkowej rotacji
+            np.zeros(3),  # brak dodatkowej translacji
+            self._calib_data.mtx,
+            self._calib_data.dist
+            )
+        return Vec2(image_points[0, 0, 0], image_points[0, 0, 1])
+    
+    def solve_3d_positions_from_pixel(self, point: Vec3, pixel_coord: Vec2, distance: float) -> list[Vec3]:
+        direction = self.pixel_to_vector(pixel_coord)
+        a = direction.x ** 2 + direction.y ** 2 + direction.z ** 2
+        b = -2 * direction.x * point.x - 2 * direction.y * point.y - 2 * direction.z * point.z
+        c = point.x ** 2 + point.y ** 2 + point.z ** 2 - distance ** 2
+        solutions = np.roots([a, b, c])
+        return [direction * solution for solution in solutions]
+
+    # def __del__(self):
+    #     if not self._record_video:
+    #         return
+
+    #     writer = cv2.VideoWriter(self._record_read_path.name,
+    #                              cv2.VideoWriter.fourcc('M', 'P', '4', 'V'),
+    #                              10.0,
+    #                              (self._video_width, self._video_height),
+    #                              True)
+
+        # for img in self._recorded_video:
+        #     writer.write(img)

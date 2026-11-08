@@ -1,6 +1,7 @@
 import mediapipe as mp
 from mediapipe.tasks.python.vision.holistic_landmarker import HolisticLandmarkerResult
 from mediapipe.tasks.python.vision.holistic_landmarker import HolisticLandmarker
+from mediapipe.tasks.python.vision.pose_landmarker import PoseLandmarksConnections
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 from pathlib import Path
@@ -10,67 +11,87 @@ import math
 import time
 from numpy import ndarray
 from typing import Callable
+from enum import IntEnum
+from ursina import Vec3
 
 fileDir = Path(__file__).resolve().parent
 
-class HandLandMarks(Enum):
-    WRIST = 0,
-    THUMB_0 = 1,
-    THUMB_1 = 2,
-    THUMB_2 = 3,
-    THUMB_3 = 4,
-    INDEX_0 = 5,
-    INDEX_1 = 6,
-    INDEX_2 = 7,
-    INDEX_3 = 8,
-    MIDDLE_0 = 9,
-    MIDDLE_1 = 10,
-    MIDDLE_2 = 11,
-    MIDDLE_3 = 12,
-    RING_0 = 13,
-    RING_1 = 14,
-    RING_2 = 15,
-    RING_3 = 16,
-    PINKY_0 = 17,
-    PINKY_1 = 18,
-    PINKY_2 = 19,
+class HandLandMarks(IntEnum):
+    WRIST = 0
+    THUMB_0 = 1
+    THUMB_1 = 2
+    THUMB_2 = 3
+    THUMB_3 = 4
+    INDEX_0 = 5
+    INDEX_1 = 6
+    INDEX_2 = 7
+    INDEX_3 = 8
+    MIDDLE_0 = 9
+    MIDDLE_1 = 10
+    MIDDLE_2 = 11
+    MIDDLE_3 = 12
+    RING_0 = 13
+    RING_1 = 14
+    RING_2 = 15
+    RING_3 = 16
+    PINKY_0 = 17
+    PINKY_1 = 18
+    PINKY_2 = 19
     PINKY_3 = 20
 
-class PoseLandmark(Enum):
-  NOSE = 0
-  LEFT_EYE_INNER = 1
-  LEFT_EYE = 2
-  LEFT_EYE_OUTER = 3
-  RIGHT_EYE_INNER = 4
-  RIGHT_EYE = 5
-  RIGHT_EYE_OUTER = 6
-  LEFT_EAR = 7
-  RIGHT_EAR = 8
-  MOUTH_LEFT = 9
-  MOUTH_RIGHT = 10
-  LEFT_SHOULDER = 11
-  RIGHT_SHOULDER = 12
-  LEFT_ELBOW = 13
-  RIGHT_ELBOW = 14
-  LEFT_WRIST = 15
-  RIGHT_WRIST = 16
-  LEFT_PINKY = 17
-  RIGHT_PINKY = 18
-  LEFT_INDEX = 19
-  RIGHT_INDEX = 20
-  LEFT_THUMB = 21
-  RIGHT_THUMB = 22
-  LEFT_HIP = 23
-  RIGHT_HIP = 24
-  LEFT_KNEE = 25
-  RIGHT_KNEE = 26
-  LEFT_ANKLE = 27
-  RIGHT_ANKLE = 28
-  LEFT_HEEL = 29
-  RIGHT_HEEL = 30
-  LEFT_FOOT_INDEX = 31
-  RIGHT_FOOT_INDEX = 32
+class PoseLandmark(IntEnum):
+    NOSE = 0
+    LEFT_EYE_INNER = 1
+    LEFT_EYE = 2
+    LEFT_EYE_OUTER = 3
+    RIGHT_EYE_INNER = 4
+    RIGHT_EYE = 5
+    RIGHT_EYE_OUTER = 6
+    LEFT_EAR = 7
+    RIGHT_EAR = 8
+    MOUTH_LEFT = 9
+    MOUTH_RIGHT = 10
+    LEFT_SHOULDER = 11
+    RIGHT_SHOULDER = 12
+    LEFT_ELBOW = 13
+    RIGHT_ELBOW = 14
+    LEFT_WRIST = 15
+    RIGHT_WRIST = 16
+    LEFT_PINKY = 17
+    RIGHT_PINKY = 18
+    LEFT_INDEX = 19
+    RIGHT_INDEX = 20
+    LEFT_THUMB = 21
+    RIGHT_THUMB = 22
+    LEFT_HIP = 23
+    RIGHT_HIP = 24
+    LEFT_KNEE = 25
+    RIGHT_KNEE = 26
+    LEFT_ANKLE = 27
+    RIGHT_ANKLE = 28
+    LEFT_HEEL = 29
+    RIGHT_HEEL = 30
+    LEFT_FOOT_INDEX = 31
+    RIGHT_FOOT_INDEX = 32
 
+class FaceLandmark(IntEnum):
+    NOSE_TIP = 1
+    NOSE_TIP_ALT = 4
+
+    LEFT_EYE_OUTER_CORNER = 33
+    LEFT_EYE_INNER_CORNER = 133
+    RIGHT_EYE_INNER_CORNER = 362
+    RIGHT_EYE_OUTER_CORNER = 263
+
+    LEFT_IRIS_CENTER = 468
+    RIGHT_IRIS_CENTER = 473
+
+    MOUTH_LEFT_CORNER = 61
+    MOUTH_RIGHT_CORNER = 291
+    UPPER_LIP_CENTER = 13
+    LOWER_LIP_CENTER = 14
+
+    CHIN = 152
 
 BaseOptions = mp.tasks.BaseOptions
 
@@ -89,8 +110,7 @@ class LandMarkRecognizer():
                 result_callback=live_call_back)
 
         self._detector:HolisticLandmarker = mp.tasks.vision.HolisticLandmarker.create_from_options(options)
-        self._pose_connections:list[tuple] = []
-        self.transform_connections()
+
 
     def print_result(self,
                      result: HolisticLandmarkerResult,
@@ -98,13 +118,10 @@ class LandMarkRecognizer():
                      timestamp_ms: int):
         print('holistic landmarker result: {}'.format(result))
 
-    def transform_connections(self):
-        for connection in mp.tasks.vision.PoseLandmarksConnections.POSE_LANDMARKS:
-            self._pose_connections.append((connection.start, connection.end))
+    @staticmethod
+    def get_pose_connections() -> list[PoseLandmarksConnections.Connection]:
+        return mp.tasks.vision.PoseLandmarksConnections.POSE_LANDMARKS
 
-    def get_pose_connections(self) -> list[tuple]:
-        return self._pose_connections
-    
     def detect_async(self, image: mp.Image, timestamp: int):
         self._detector.detect_async(image, timestamp)
 
@@ -179,3 +196,5 @@ class LandMarkRecognizer():
 
             return image_copy
 
+def landmark_to_vec3(landmark) -> Vec3:
+    return Vec3(landmark.x, landmark.y, landmark.z)
