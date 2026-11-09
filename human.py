@@ -10,6 +10,9 @@ from ursina import Vec3, Vec2
 import panda3d.core
 from enum import IntEnum, auto
 from math_util import norm
+import global_timer
+import graph_util
+from collections import deque
 
 class HumanLandmark(IntEnum):
     # Pose
@@ -168,6 +171,20 @@ def get_landmark(humanLandmark: HumanLandmark, landmark_result: HolisticLandmark
     raise ValueError("Unknown landmark")
 
 
+class Cycle_buffer:
+    def __init__(self, size):
+        self.array = [0 for i in range(size)]
+        self.index = 0
+
+    def add(self, value):
+        self.array[self.index] = value
+        self.index = (self.index  + 1) % len(self.array)
+
+    def median(self):
+        temp = self.array.copy()
+        temp.sort()
+        return temp[len(self.array) // 2]
+
 class Bone:
     def __init__(self, start: HumanLandmark, end: HumanLandmark, length_cm: int) -> None:
         self.start = start
@@ -182,6 +199,9 @@ class Joint():
         self.relative_position: Vec3 = Vec3()
         self.rel_velocity: Vec3 = Vec3()
         self.reference_joint: Joint = None
+        self.landmark_position = Vec3()
+        self.landmark_x_history = Cycle_buffer(5)
+        self.landmark_y_history = Cycle_buffer(5)
 
     def calculate_position(self,
                            parent_bone: Bone,
@@ -194,7 +214,12 @@ class Joint():
         landmark = get_landmark(self.landmark, landmark_result)
         if landmark.x is None or landmark.y is None:
             return False
-        coord = Vec2(landmark.x * width, landmark.y * height)
+        new_landmark_position = landmark_to_vec3(landmark)
+        self.landmark_x_history.add(new_landmark_position.x)
+        self.landmark_y_history.add(new_landmark_position.y)
+
+        coord = Vec2(self.landmark_x_history.median() * width,
+                     self.landmark_y_history.median() * height)
         solutions = camera.solve_3d_positions_from_pixel(parent_joint.position,
                                                          coord,
                                                          parent_bone.length_cm)
@@ -205,10 +230,12 @@ class Joint():
             if dist < min:
                 min = dist
                 min_solution = solution
+
         prev_rel_position = self.relative_position
         self.position = min_solution
         self.relative_position = self.position - self.reference_joint.position
-        self.rel_velocity = self.relative_position - prev_rel_position
+        pos_diff = (self.relative_position - prev_rel_position)
+        self.rel_velocity = pos_diff / (global_timer.delta_time / 1000)
 
         return True
 
@@ -234,7 +261,15 @@ class Human:
         self.skeleton = self._init_skeleton()
         self._add_reference_point_for_joints()
         self.model_verticies, self.model_lines = self._init_model_connections()
-
+        graph_util.add_plot("posX", 
+                            lambda:  (global_timer.previous_update_time, self.skeleton[HumanLandmark.POSE_LEFT_WRIST].relative_position.x))
+        graph_util.add_plot("posY", 
+                            lambda:  (global_timer.previous_update_time, self.skeleton[HumanLandmark.POSE_LEFT_WRIST].relative_position.y))
+        graph_util.add_plot("left wrist pos z", 
+                             lambda:  (global_timer.previous_update_time, self.skeleton[HumanLandmark.POSE_LEFT_WRIST].relative_position.z))
+        graph_util.add_plot("shoulder z", 
+                                     lambda:  (global_timer.previous_update_time, self.skeleton[HumanLandmark.POSE_MIDDLE_SHOULDER].position.z))
+                
 
     def _init_skeleton(self) -> dict[HumanLandmark, Joint]:
         graph:dict[HumanLandmark, Joint] = {}
@@ -319,7 +354,7 @@ class Human:
             Bone(HumanLandmark.POSE_MIDDLE_SHOULDER, HumanLandmark.POSE_RIGHT_SHOULDER, 39 // 2),
 
             # Left arm
-            Bone(HumanLandmark.POSE_LEFT_SHOULDER, HumanLandmark.POSE_LEFT_ELBOW, 31),
+            Bone(HumanLandmark.POSE_LEFT_SHOULDER, HumanLandmark.POSE_LEFT_ELBOW, 29),
             Bone(HumanLandmark.POSE_LEFT_ELBOW, HumanLandmark.POSE_LEFT_WRIST, 27),
             Bone(HumanLandmark.POSE_LEFT_WRIST, HumanLandmark.POSE_LEFT_PINKY, 9),
             Bone(HumanLandmark.POSE_LEFT_WRIST, HumanLandmark.POSE_LEFT_INDEX, 10),
@@ -327,7 +362,7 @@ class Human:
             Bone(HumanLandmark.POSE_LEFT_PINKY, HumanLandmark.POSE_LEFT_INDEX, 5),
 
             # Right arm
-            Bone(HumanLandmark.POSE_RIGHT_SHOULDER, HumanLandmark.POSE_RIGHT_ELBOW, 31),
+            Bone(HumanLandmark.POSE_RIGHT_SHOULDER, HumanLandmark.POSE_RIGHT_ELBOW, 29),
             Bone(HumanLandmark.POSE_RIGHT_ELBOW, HumanLandmark.POSE_RIGHT_WRIST, 27),
             Bone(HumanLandmark.POSE_RIGHT_WRIST, HumanLandmark.POSE_RIGHT_PINKY, 9),
             Bone(HumanLandmark.POSE_RIGHT_WRIST, HumanLandmark.POSE_RIGHT_INDEX, 10),
@@ -365,7 +400,8 @@ class Human:
 
         self._calculate_model_points(result, output_image, camera)
         self._recalculate_human_model(result)
-        print(norm(self.skeleton[HumanLandmark.POSE_LEFT_WRIST].rel_velocity))
+
+        # # print(norm(self.skeleton[HumanLandmark.POSE_LEFT_WRIST].rel_velocity))
 
     def solve_distance_from_face(self,
                                  result: HolisticLandmarkerResult,
@@ -445,10 +481,6 @@ class Human:
 
     def _recalculate_human_model(self, mp_landmarks: HolisticLandmarkerResult) -> None:
         assert(type(self._human_model.model) is Mesh)
-
-
-
-        
 
         temp = mp_landmarks.pose_landmarks
         world_landmarks = mp_landmarks.pose_world_landmarks

@@ -1,28 +1,23 @@
 from ursina import Ursina, load_blender_scene, EditorCamera, Mesh, Entity, Vec3, color, Vec2, camera, application
-from panda3d.core import Quat
-import panda3d.core
-from ursina.shaders import lit_with_shadows_shader
 from pathlib import Path
 from typing import cast
 import time
 import cv2
 from LandMarkRecognizer import LandMarkRecognizer, FaceLandmark, landmark_to_vec3, PoseLandmark
 from numpy import ndarray
-from mediapipe import Image
 import mediapipe as mp
 from mediapipe.tasks.python.vision.holistic_landmarker import HolisticLandmarkerResult
 from GUI import GUI
 from camera import Camera
-import numpy as np
 from human import Human
-from collections import deque
-import matplotlib.pyplot as plt
+import global_timer
+import graph_util
 
 fileDir = Path(__file__).resolve().parent
 
 class MainApp():
     def __init__(self):
-        self.camera_address = "http://192.168.1.149:8080/stream"
+        self.camera_address = "http://192.168.1.151:8080/stream"
         self._video_cap = self._init_camera(self.camera_address)
         self._human: Human = Human()
         self._ursina_app = self._init_ursina()
@@ -30,12 +25,11 @@ class MainApp():
 
         self._Gui = self._init_GUI()
 
-        self.frame_rate = 15
+        self.frame_rate = 120
         self.frame_time = 1 / self.frame_rate
         self._show_camera = True
         self._result_processed = True
         self._result_image = None
-
 
     def _init_GUI(self) -> GUI:
         Gui = GUI()
@@ -99,7 +93,7 @@ class MainApp():
 
 
     def _init_camera(self, address: str) -> Camera:
-        video_capture = Camera(address, read_video=True, record_video=False)
+        video_capture = Camera(address, read_video=False, record_video=False)
         return video_capture
 
     # def __del__(self):
@@ -126,7 +120,7 @@ class MainApp():
                     image_format=mp.ImageFormat.SRGB,
                     data=rgb_frame
                     )
-            self._land_mark_recognizer.detect_async(image, int(time.time() * 1000))
+            self._land_mark_recognizer.detect_async(image, global_timer.previous_update_time)
             self._result_processed = False
 
     def _process_mp_result(self,
@@ -144,25 +138,28 @@ class MainApp():
         # self._calculate_model_points(result, output_image)
 
 
-
-
     def run(self):
         i = 0
         while(True):
             i += 1
+            global_timer.update()
             start_time = time.time()
             # process frame
-            # self._stepFrame()
+            self._stepFrame()
             # sleep to match the framerate
             end_time = time.time()
-            delta_time = (end_time - start_time)
-            sleep_time = self.frame_time - delta_time if self.frame_time - delta_time > 0 else 0
+            step_time = (end_time - start_time)
+            sleep_time = self.frame_time - step_time if self.frame_time - step_time > 0 else 0
+            if i % 5 == 0:
+                graph_util.update_plots()
             time.sleep(sleep_time)
+
             # print(f"Frame {i}")
-            # print(f"Current max frame rate {1 / delta_time}")
+            # print(f"Current max frame rate {1 / step_time}")
 
     def on_close(self):
         self._video_cap.save_video()
+        graph_util.close()
         application.quit()
 
 
